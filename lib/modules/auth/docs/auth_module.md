@@ -3,6 +3,19 @@
 ## Overview
 The Auth Module is a pluggable module that handles authentication-related functionality in the application. It follows a clean architecture pattern with clear separation of concerns between data and domain layers.
 
+## Error Codes
+All error codes are centralized here for consistency across the application:
+
+### Login Errors
+- `EMAIL_NOT_FOUND`: Email address not registered
+- `INVALID_PASSWORD`: Password is incorrect
+- `INVALID_EMAIL_FORMAT`: Email format is invalid
+
+### Token Errors
+- `TOKEN_NOT_FOUND`: No token exists in storage
+- `TOKEN_EXPIRED`: Token has expired
+- `REFRESH_FAILED`: Failed to refresh token
+
 ## Dependency Tree
 ```
 AuthModule
@@ -99,7 +112,7 @@ AuthModule
   - Concrete implementation of AuthRepository
   - Handles actual authentication logic
   - Implements error handling using `Result`
-  - Maps lower-level errors to domain-specific errors
+  - Maps both server response errors and exceptions to domain-specific errors
 
 ### Module Classes
 - **[`AuthModule`](auth_module.dart)**
@@ -195,6 +208,24 @@ tokenResult.fold(
 );
 ```
 
+## Error Handling
+The module implements a comprehensive error handling system:
+
+1. **Server Response Errors**
+   - Parsed from backend responses
+   - Mapped to specific domain errors
+   - Includes error codes and messages
+
+2. **Exception Handling**
+   - Catches unexpected errors
+   - Maps to appropriate domain errors
+   - Preserves original errors for debugging
+
+3. **Error Hierarchy**
+   - Base `AppError` class for all errors
+   - Method-specific error types (e.g., `LoginError`, `RefreshTokenError`)
+   - Specific error cases (e.g., `EmailNotFoundError`, `TokenExpiredError`)
+
 ## Notes
 - The module uses GetX for dependency injection
 - Token storage is implemented using secure storage
@@ -202,4 +233,4 @@ tokenResult.fold(
 - Both access token and refresh token are stored securely using JSON serialization
 - Error handling is implemented using the `Result` class from common module
 - Errors are organized in a hierarchy with specific types for different scenarios
-- Repository implementations map lower-level errors to domain-specific errors
+- Repository implementations map both server response errors and exceptions to domain-specific errors
