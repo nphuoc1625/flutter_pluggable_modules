@@ -13,7 +13,9 @@ class AuthModule {
     await tokenStorageImpl.init();
     Get.put<TokenStorage>(tokenStorageImpl);
 
-    Get.lazyPut<AuthRepository>(() => AuthRepositoryImpl(Get.find()));
+    Get.lazyPut<AuthRepository>(
+      () => AuthRepositoryImpl(Get.find(), Get.find()),
+    );
     // Get.lazyPut(() => AuthController(Get.find()));
   }
 }
