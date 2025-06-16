@@ -1,54 +1,204 @@
+import 'package:flutter_pluggable_modules/modules/auth/data/sources/auth_api.dart';
 import 'package:flutter_pluggable_modules/modules/auth/data/storages/token_storage.dart';
 import 'package:flutter_pluggable_modules/modules/auth/domain/errors/auth_error.dart';
 import 'package:flutter_pluggable_modules/modules/auth/domain/models/token.dart';
+import 'package:flutter_pluggable_modules/modules/auth/domain/models/user.dart';
 import 'package:flutter_pluggable_modules/modules/auth/domain/repositories/auth_repository.dart';
 import 'package:flutter_pluggable_modules/modules/common/error/error_codes.dart';
 import 'package:flutter_pluggable_modules/modules/common/result/result.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
   final TokenStorage _tokenStorage;
+  final AuthApi _authApi;
 
-  AuthRepositoryImpl(this._tokenStorage);
+  AuthRepositoryImpl(this._tokenStorage, this._authApi);
 
   @override
-  Future<Result<Token, LoginError>> loginWithEmail(
+  Future<Result<User, LoginError>> loginWithEmail(
     String email,
     String password,
   ) async {
     try {
-      // TODO: Call actual auth service
-      final response = await _mockAuthService(email, password);
-
-      if (response['error'] != null) {
-        final error = response['error'];
-        switch (error['code']) {
-          case AuthErrorCodes.emailNotFound:
-            return Result.error(EmailNotFoundError());
-          case AuthErrorCodes.invalidPassword:
-            return Result.error(InvalidPasswordError());
-          case AuthErrorCodes.invalidEmailFormat:
-            return Result.error(InvalidEmailFormatError());
-          default:
-            return Result.error(LoginError(error['message'] ?? 'Login failed'));
-        }
+      if (!_isValidEmail(email)) {
+        return Result.error(InvalidEmailFormatError());
       }
 
+      if (!_isValidPassword(password)) {
+        return Result.error(InvalidPasswordError());
+      }
+
+      final response = await _authApi.login(email, password);
+
+      if (response.isError) {
+        final error = response.error;
+        if (error.code == NetworkErrorCodes.noConnection) {
+          return Result.error(
+            LoginError(
+              'Network error occurred',
+              code: error.code,
+              originalError: error.originalError,
+            ),
+          );
+        }
+        return Result.error(
+          LoginError(
+            error.message,
+            code: error.code,
+            originalError: error.originalError,
+          ),
+        );
+      }
+
+      final data = response.success;
       final token = Token(
-        accessToken: response['accessToken'],
-        refreshToken: response['refreshToken'],
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
       );
 
       await _tokenStorage.saveToken(token);
-      return Result.success(token);
+
+      return Result.success(
+        User(
+          id: data.userId,
+          email: email,
+          name: data.name,
+          avatarUrl: null,
+          createdAt: data.createdAt,
+          lastLoginAt: data.lastLoginAt,
+        ),
+      );
     } catch (e) {
-      if (e is LoginError) {
-        return Result.error(e);
-      }
       return Result.error(LoginError('Login failed', originalError: e));
     }
   }
 
   @override
+  Future<Result<User, UserNotFoundError>> getCurrentUser() async {
+    try {
+      final token = await _tokenStorage.getToken();
+      if (token == null) {
+        return Result.error(
+          UserNotFoundError(code: AuthErrorCodes.tokenNotFound),
+        );
+      }
+
+      final response = await _authApi.getCurrentUser(token.accessToken);
+
+      if (response.isError) {
+        final error = response.error;
+        if (error.code == NetworkErrorCodes.noConnection) {
+          return Result.error(
+            UserNotFoundError(
+              code: error.code,
+              originalError: error.originalError,
+            ),
+          );
+        }
+        return Result.error(
+          UserNotFoundError(
+            code: error.code,
+            originalError: error.originalError,
+          ),
+        );
+      }
+
+      return Result.success(response.success);
+    } catch (e) {
+      return Result.error(UserNotFoundError(originalError: e));
+    }
+  }
+
+  @override
+  Future<Result<void, LogoutError>> logout() async {
+    try {
+      final token = await _tokenStorage.getToken();
+      if (token != null) {
+        final response = await _authApi.logout(token.accessToken);
+        if (response.isError) {
+          final error = response.error;
+          if (error.code == NetworkErrorCodes.noConnection) {
+            return Result.error(
+              LogoutError(
+                'Network error occurred',
+                code: error.code,
+                originalError: error.originalError,
+              ),
+            );
+          }
+          return Result.error(
+            LogoutError(
+              error.message,
+              code: error.code,
+              originalError: error.originalError,
+            ),
+          );
+        }
+      }
+
+      await _tokenStorage.deleteToken();
+      return Result.success(null);
+    } catch (e) {
+      return Result.error(LogoutError('Failed to logout', originalError: e));
+    }
+  }
+
+  @override
+  Future<Result<User, ProfileUpdateError>> updateProfile(User user) async {
+    try {
+      final token = await _tokenStorage.getToken();
+      if (token == null) {
+        return Result.error(
+          ProfileUpdateError(
+            'Not authenticated',
+            code: AuthErrorCodes.tokenNotFound,
+          ),
+        );
+      }
+
+      if (user.name?.isEmpty ?? true) {
+        return Result.error(
+          ProfileUpdateError(
+            'Name cannot be empty',
+            code: AuthErrorCodes.invalidEmailFormat,
+          ),
+        );
+      }
+
+      final response = await _authApi.updateProfile(
+        token.accessToken,
+        user.name ?? '',
+        user.avatarUrl,
+      );
+
+      if (response.isError) {
+        final error = response.error;
+        if (error.code == NetworkErrorCodes.noConnection) {
+          return Result.error(
+            ProfileUpdateError(
+              'Network error occurred',
+              code: error.code,
+              originalError: error.originalError,
+            ),
+          );
+        }
+        return Result.error(
+          ProfileUpdateError(
+            error.message,
+            code: error.code,
+            originalError: error.originalError,
+          ),
+        );
+      }
+
+      return Result.success(response.success);
+    } catch (e) {
+      return Result.error(
+        ProfileUpdateError('Failed to update profile', originalError: e),
+      );
+    }
+  }
+
+  // Token management methods (implementation details)
   Future<Result<Token, TokenNotFoundError>> getToken() async {
     try {
       final token = await _tokenStorage.getToken();
@@ -64,45 +214,43 @@ class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
-  @override
-  Future<Result<Token, RefreshTokenError>> refreshToken() async {
+  Future<Result<Token, RefreshFailedError>> refreshToken() async {
     try {
       final currentToken = await _tokenStorage.getToken();
       if (currentToken == null) {
-        return Result.error(TokenExpiredError());
+        return Result.error(
+          RefreshFailedError(code: AuthErrorCodes.tokenNotFound),
+        );
       }
 
-      // TODO: Call actual auth service to refresh token
-      final response = await _mockRefreshToken(currentToken.refreshToken);
+      final response = await _authApi.refreshToken(currentToken.refreshToken);
 
-      if (response['error'] != null) {
-        final error = response['error'];
-        switch (error['code']) {
-          case AuthErrorCodes.tokenExpired:
-            return Result.error(TokenExpiredError());
-          case AuthErrorCodes.refreshFailed:
-            return Result.error(RefreshFailedError());
-          default:
-            return Result.error(RefreshFailedError());
+      if (response.isError) {
+        final error = response.error;
+        if (error.code == NetworkErrorCodes.noConnection) {
+          return Result.error(
+            RefreshFailedError(
+              code: error.code,
+              originalError: error.originalError,
+            ),
+          );
         }
+        return Result.error(
+          RefreshFailedError(
+            code: error.code,
+            originalError: error.originalError,
+          ),
+        );
       }
 
-      final newToken = Token(
-        accessToken: response['accessToken'],
-        refreshToken: response['refreshToken'],
-      );
-
+      final newToken = response.success;
       await _tokenStorage.saveToken(newToken);
       return Result.success(newToken);
     } catch (e) {
-      if (e is RefreshTokenError) {
-        return Result.error(e);
-      }
       return Result.error(RefreshFailedError(originalError: e));
     }
   }
 
-  @override
   Future<Result<void, TokenNotFoundError>> deleteToken() async {
     try {
       final token = await _tokenStorage.getToken();
@@ -117,52 +265,6 @@ class AuthRepositoryImpl implements AuthRepository {
       }
       return Result.error(TokenNotFoundError(originalError: e));
     }
-  }
-
-  // Mock service calls for demonstration
-  Future<Map<String, dynamic>> _mockAuthService(
-    String email,
-    String password,
-  ) async {
-    // Simulate network delay
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    // Simulate error response
-    if (email == 'error@example.com') {
-      return {
-        'error': {
-          'code': AuthErrorCodes.emailNotFound,
-          'message': 'Email not found',
-        },
-      };
-    }
-
-    // Simulate success response
-    return {
-      'accessToken': 'mock_access_token',
-      'refreshToken': 'mock_refresh_token',
-    };
-  }
-
-  Future<Map<String, dynamic>> _mockRefreshToken(String refreshToken) async {
-    // Simulate network delay
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    // Simulate error response
-    if (refreshToken == 'expired_token') {
-      return {
-        'error': {
-          'code': AuthErrorCodes.tokenExpired,
-          'message': 'Token has expired',
-        },
-      };
-    }
-
-    // Simulate success response
-    return {
-      'accessToken': 'new_mock_access_token',
-      'refreshToken': 'new_mock_refresh_token',
-    };
   }
 
   bool _isValidEmail(String email) {

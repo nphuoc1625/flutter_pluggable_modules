@@ -1,8 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter_pluggable_modules/modules/auth/domain/models/token.dart';
 import 'package:flutter_pluggable_modules/modules/common/storage/storage.dart';
-
-import '../../domain/models/token.dart';
 
 class TokenStorage {
   final Storage _storage;

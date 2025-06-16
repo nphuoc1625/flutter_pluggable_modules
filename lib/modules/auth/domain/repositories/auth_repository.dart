@@ -1,50 +1,45 @@
 import 'package:flutter_pluggable_modules/modules/auth/domain/errors/auth_error.dart';
-import 'package:flutter_pluggable_modules/modules/auth/domain/models/token.dart';
+import 'package:flutter_pluggable_modules/modules/auth/domain/models/user.dart';
 import 'package:flutter_pluggable_modules/modules/common/result/result.dart';
 
 /// Repository interface for authentication operations.
 ///
-/// This repository handles all authentication-related operations including:
-/// - Login with email and password
-/// - Token management (get, refresh, delete)
-///
-/// All methods return a [Result] type that can contain either:
-/// - Success: The expected return type (e.g., [Token] for login)
-/// - Error: A specific error type for each method
+/// This repository handles core authentication business logic including:
+/// - User authentication (login, logout)
+/// - User session management
+/// - User profile operations
 abstract class AuthRepository {
-  /// Logs in a user with email and password.
+  /// Authenticates a user with email and password.
   ///
   /// Returns a [Result] containing either:
-  /// - Success: [Token] with access and refresh tokens
+  /// - Success: [User] with authenticated user data
   /// - Error: [LoginError] or its subclasses:
   ///   - [EmailNotFoundError]: When the email doesn't exist
   ///   - [InvalidEmailFormatError]: When email format is invalid
   ///   - [InvalidPasswordError]: When password is incorrect
-  Future<Result<Token, LoginError>> loginWithEmail(
+  Future<Result<User, LoginError>> loginWithEmail(
     String email,
     String password,
   );
 
-  /// Gets the current authentication token.
+  /// Logs out the current user.
   ///
   /// Returns a [Result] containing either:
-  /// - Success: [Token] with current access and refresh tokens
-  /// - Error: [TokenNotFoundError] when no token exists
-  Future<Result<Token, TokenNotFoundError>> getToken();
+  /// - Success: `void` when logout is successful
+  /// - Error: [LogoutError] when logout fails
+  Future<Result<void, LogoutError>> logout();
 
-  /// Refreshes the current authentication token.
+  /// Gets the current authenticated user.
   ///
   /// Returns a [Result] containing either:
-  /// - Success: [Token] with new access and refresh tokens
-  /// - Error: [RefreshTokenError] or its subclasses:
-  ///   - [TokenExpiredError]: When refresh token has expired
-  ///   - [RefreshFailedError]: When refresh operation fails
-  Future<Result<Token, RefreshTokenError>> refreshToken();
+  /// - Success: [User] with current user data
+  /// - Error: [UserNotFoundError] when no user is authenticated
+  Future<Result<User, UserNotFoundError>> getCurrentUser();
 
-  /// Deletes the current authentication token.
+  /// Updates the current user's profile.
   ///
   /// Returns a [Result] containing either:
-  /// - Success: `void` when token is successfully deleted
-  /// - Error: [TokenNotFoundError] when no token exists to delete
-  Future<Result<void, TokenNotFoundError>> deleteToken();
+  /// - Success: [User] with updated user data
+  /// - Error: [ProfileUpdateError] when update fails
+  Future<Result<User, ProfileUpdateError>> updateProfile(User user);
 }
